@@ -18,8 +18,6 @@ from typing import Dict, List
 
 
 """
-this is a test, remove me later
-
 d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b 
 `~~88~~' .8P  Y8. 88  `8D .8P  Y8.       88        `88'   88'  YP `~~88~~' 
    88    88    88 88   88 88    88       88         88    `8bo.      88    
@@ -42,6 +40,7 @@ d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b
         * Add bookmarks on a song
 """
 
+pathsep = os.path.sep
 
 def syntaxIsValid(file: str) -> bool:
     """
@@ -377,7 +376,7 @@ class Player:
         self.listWinStart = 0
         self.barWinProgress = 0
         self.music = list()
-        self.configFile = "\\".join(os.path.abspath(__file__).split("\\")[:-1]) + "\\settings.config"
+        self.configFile = os.path.join(pathsep.join(os.path.abspath(__file__).split(pathsep)[:-1]), "settings.config")
 
         if not os.path.isfile(self.configFile):
             # It's most likely the first time the user
@@ -815,7 +814,7 @@ class Player:
             All the songs that were found
         """
 
-        return [file.split("\\")[-1] for file in glob.glob(os.path.join(self.configuration['musicFolder']
+        return [file.split(pathsep)[-1] for file in glob.glob(os.path.join(self.configuration['musicFolder']
                                                                         if not folder else folder, "*.mp3"))]
 
     def start(self):
@@ -940,13 +939,13 @@ class Player:
         try:
             # Uses already selected song
             if not song:
-                length = MP3(self.configuration["musicFolder"] + "\\" + self.selectedSong).info.length
+                length = MP3(os.path.join(self.configuration["musicFolder"], self.selectedSong)).info.length
 
             # Uses given "song" parameter
             else:
                 length = MP3(song).info.length
         except Exception:
-            length = MP3(self.configuration["musicFolder"] + "\\" + self.selectedSong).info.length
+            length = MP3(os.path,join(self.configuration["musicFolder"], self.selectedSong)).info.length
 
         self.barWin.addstr(2, 1, f"Progress", curses.color_pair(1))
         self._refreshWindow(self.barWin)
@@ -1076,7 +1075,7 @@ class Player:
 
         # The song is a single song
         if not self.currentPlaylist:
-            file = TinyTag.get(self.configuration["musicFolder"] + "\\" + os.path.basename(self.selectedSong))
+            file = TinyTag.get(os.path.join(self.configuration["musicFolder"], os.path.basename(self.selectedSong)))
 
             # All these try except are really ugly
             # I should find a better way, but this works
