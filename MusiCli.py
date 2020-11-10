@@ -38,6 +38,8 @@ d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b
         * Modify a song metadata
         * Move forward and backwards in a song
         * Add bookmarks on a song
+        * Albums support
+        * Look in subfolders of ~/Music
 """
 
 pathsep = os.path.sep
@@ -354,8 +356,9 @@ class Player:
         All the windows that can be selected
     """
 
-    def __init__(self):
-        self.stdscr = curses.initscr()
+    def __init__(self, stdscr):
+        self.stdscr = stdscr
+        #self.stdscr = curses.initscr()
         curses.noecho()
         curses.cbreak()
         curses.resize_term(*self.stdscr.getmaxyx())
@@ -945,7 +948,7 @@ class Player:
             else:
                 length = MP3(song).info.length
         except Exception:
-            length = MP3(os.path,join(self.configuration["musicFolder"], self.selectedSong)).info.length
+            length = MP3(os.path.join(self.configuration["musicFolder"], self.selectedSong)).info.length
 
         self.barWin.addstr(2, 1, f"Progress", curses.color_pair(1))
         self._refreshWindow(self.barWin)
@@ -1347,11 +1350,9 @@ class Player:
         self._refreshEverything()
 
 
+def main(stdscr):
+    p = Player(stdscr)
+    p.start()
+
 if __name__ == '__main__':
-    p = Player()
-    try:
-        p.start()
-    except KeyboardInterrupt:
-        p.stop()
-    except Exception:
-        traceback.print_exc()
+    curses.wrapper(main) #TODO ctrl-c does not exit gracefully
