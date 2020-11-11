@@ -2,8 +2,6 @@ import os
 import glob
 import curses
 import sys
-import re
-import ast
 import time
 import random
 import kthread
@@ -13,7 +11,9 @@ from pathlib import Path
 from tinytag import TinyTag
 from mutagen.mp3 import MP3
 from pygame import mixer
-from typing import Dict, List
+from typing import List
+
+import Parser
 
 """
 d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b 
@@ -23,6 +23,8 @@ d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b
    88    `8b  d8' 88  .8D `8b  d8'       88booo.   .88.   db   8D    88    
    YP     `Y88P'  Y8888D'  `Y88P'        Y88888P Y888888P `8888Y'    YP    
 
+    Known Bugs:
+        * Resizing the window prevents tabbing          Importance: HIGH
 
     To Add:
         * Faster refresh rate                           Importance: LOW
@@ -36,241 +38,6 @@ d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b
 """
 
 pathsep = os.path.sep
-
-
-def syntaxIsValid(file: str) -> bool:
-    """
-    Summary:
-    -------
-    parses a file and searches for errors in the syntax.
-
-    Parameters:
-    -------
-    file : str
-        The file to parse
-
-    Returns:
-    -------
-    bool
-        Wether the file is syntactically valid or not
-    """
-
-    with open(file, "r") as f:
-        try:
-            [line.split(" :=: ") for line in f.readlines() if len(line.strip())]
-        except Exception:
-            return False
-    return True
-
-
-def readConfigFile(file: str) -> Dict:
-    """
-    Summary:
-    -------
-    parses a file and returns a dictionary with the
-    corresponding values.
-
-    Parameters:
-    -------
-    file : str
-        The file to parse
-
-    Returns:
-    -------
-    Dict
-        The parsed dictionary
-    """
-
-    data = {}
-    with open(file, "r") as f:
-        lines = [line.split(" :=: ") for line in f.readlines() if line.strip()]
-
-    for line in lines:
-        if line[0].startswith("#"):
-            continue
-
-        if line[1].strip().startswith("\"") and line[1].strip().endswith("\""):
-            data[line[0].strip()] = re.search('\"(.+?)\"', line[1].strip()).group(1)
-
-        elif line[1].strip().startswith("[") and line[1].strip().endswith("]"):
-            parsableString = line[1].strip()
-            parsableString = parsableString.replace("true", "True")
-            parsableString = parsableString.replace("false", "False")
-            parsableString = parsableString.replace("none", "None")
-            data[line[0].strip()] = [item for item in ast.literal_eval(parsableString)]
-
-        else:
-            if line[1].strip() == "true":
-                data[line[0].strip()] = True
-            elif line[1].strip() == "false":
-                data[line[0].strip()] = False
-            elif line[1].strip() == "none":
-                data[line[0].strip()] = None
-            else:
-                data[line[0].strip()] = int(line[1].strip())
-
-    return data
-
-
-def writeConfigFile(file: str, data: Dict):
-    """
-    Summary:
-    -------
-    writes a dictionary into a config file.
-
-    Parameters:
-    -------
-    file : str
-        The file to write to
-
-    data : Dict
-        The actual data to write to the file
-    """
-
-    AVAILABLE_SPECIAL = {v: k for k, v in {"<UP>": curses.KEY_UP,
-                                           "<DOWN>": curses.KEY_DOWN,
-                                           "<LEFT>": curses.KEY_LEFT,
-                                           "<RIGHT>": curses.KEY_RIGHT,
-                                           "<TAB>": 9,
-                                           "<SPACE>": ord(" ")}.items()}
-
-    text = ""
-    with open(file, "w") as f:
-        for key, value in data.items():
-            if isinstance(value, (list, tuple)):
-                text += f"{key} :=: {value}\n"
-
-            elif isinstance(value, bool):
-                if value:
-                    text += f"{key} :=: true\n"
-                elif not value:
-                    text += f"{key} :=: false\n"
-                elif value is None:
-                    text += f"{key} :=: none\n"
-
-            elif isinstance(value, (str, int)) and not isinstance(value, bool):
-                if key.startswith("ks_"):
-                    try:
-                        if chr(value) in string.ascii_letters + string.digits + string.punctuation:
-                            text += f"{key} :=: \"{chr(value)}\"\n"
-                        elif value in AVAILABLE_SPECIAL.keys():
-                            text += f"{key} :=: \"{AVAILABLE_SPECIAL[value]}\"\n"
-                        else:
-                            raise Exception()
-                    except Exception:
-                        text += f"{key} :=: \"{value}\"\n"
-                else:
-                    if isinstance(value, int):
-                        text += f"{key} :=: {value}\n"
-                    else:
-                        text += f"{key} :=: \"{value}\"\n"
-            else:
-                text += f"{key} :=: {value}\n"
-
-        f.write(text)
-
-
-def configurationIsValid(configuration: Dict) -> bool:
-    """
-    Summary:
-    -------
-    parses a file and searches for errors in the hotkey configuration.
-
-    Parameters:
-    -------
-    file : str
-        The file to parse
-
-    Returns:
-    -------
-    bool
-        Wether the file's configuration is valid or not
-    """
-
-    AVAILABLE_SPECIAL = ["<UP>", "<DOWN>", "<LEFT>", "<RIGHT>", "<TAB>", "<SPACE>"]
-    for key, value in configuration.items():
-        if key.startswith("ks_"):
-            if len(value) > 1:
-                if value not in AVAILABLE_SPECIAL:
-                    return False
-
-            elif len(value) == 1:
-                if value not in string.ascii_letters + string.digits + string.punctuation:
-                    return False
-
-            else:
-                return False
-
-    return True
-
-
-def makeReadableByCode(data: Dict) -> Dict:
-    """
-    Summary:
-    -------
-    converts a .config-like dictionary into something the code can use.
-
-    Parameters:
-    -------
-    data : Dict
-        The dictionary to convert
-
-    Returns:
-    -------
-    Dict
-        The resulting dictionary
-    """
-
-    AVAILABLE_SPECIAL = {"<UP>": curses.KEY_UP,
-                         "<DOWN>": curses.KEY_DOWN,
-                         "<LEFT>": curses.KEY_LEFT,
-                         "<RIGHT>": curses.KEY_RIGHT,
-                         "<TAB>": 9,
-                         "<SPACE>": ord(" ")}
-
-    for key, value in data.items():
-        if key.startswith("ks_"):
-            if value in AVAILABLE_SPECIAL.keys():
-                data[key] = AVAILABLE_SPECIAL[value]
-            else:
-                data[key] = ord(value)
-
-        else:
-            try:
-                data[key] = int(value)
-            except Exception:
-                data[key] = value
-
-    return data
-
-
-def getSongsMissingFromPlaylist(playlists: Dict) -> Dict:
-    """
-    Summary:
-    -------
-    checks if the songs in the given playlists still exist.
-
-    Parameters:
-    -------
-    playlists : Dict
-        The playlists to check
-
-    Returns:
-    -------
-    Dict
-        The missing songs ordered by corresponding playlist
-    """
-
-    missing = {}
-    for name, playlist in playlists.items():
-        for song in playlist:
-            if not os.path.isfile(song):
-                try:
-                    missing[name].append(song)
-                except Exception:
-                    missing[name] = [song]
-
-    return missing
 
 
 class Player:
@@ -380,7 +147,7 @@ class Player:
             # opens the program, so it creates a default
             # config file and shows a welcome message
 
-            writeConfigFile(self.configFile,
+            Parser.writeConfigFile(self.configFile,
                             {
                                 "musicFolder": str(os.path.join(Path.home(), "Music")),
                                 "volume": 25,
@@ -414,10 +181,10 @@ class Player:
             self.popupWin.clear()
             self.stdscr.clear()
 
-        self.validSyntax = syntaxIsValid(self.configFile)
-        self.configuration = readConfigFile(self.configFile)
+        self.validSyntax = Parser.syntaxIsValid(self.configFile)
+        self.configuration = Parser.readConfigFile(self.configFile)
         self.notParsedConfiguration = {k: v for k, v in self.configuration.items()}  # Clone without linking
-        self.configuration = makeReadableByCode(self.configuration)
+        self.configuration = Parser.makeReadableByCode(self.configuration)
 
         # !!! Remove once you add resizability !!!
         if self.stdscr.getmaxyx()[0] < 28 or self.stdscr.getmaxyx()[1] < 130:
@@ -430,21 +197,21 @@ class Player:
         # Checks for missing songs inside playlists, as playlists can contain songs
         # from different folders, and trying to access a song that has been deleted
         # would crash the program
-        missing = getSongsMissingFromPlaylist({k: v for k, v in self.configuration.items()
+        missing = Parser.getSongsMissingFromPlaylist({k: v for k, v in self.configuration.items()
                                                if k.startswith("playlist_")})
         if missing:
             for name, songs in missing.items():
                 for song in songs:
                     self.configuration[name].remove(
                         os.path.join(self.configuration["musicFolder"], song))
-            writeConfigFile(self.configFile,
-                            self.configuration)
+            Parser.writeConfigFile(self.configFile,
+                                   self.configuration)
             self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 2,
                                           self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 4)
             self._makeErrorPopup(self.popupWin, "Unaccessible songs were removed from playlists", "Playlists")
 
         # Checks if the configuration file is valid. If it's not it shows an error and quits
-        if not self.validSyntax or not configurationIsValid(self.notParsedConfiguration):
+        if not self.validSyntax or not Parser.configurationIsValid(self.notParsedConfiguration):
             self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 2,
                                           self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 4)
             self._makeErrorPopup(self.popupWin, "Invalid configuration file", "Configuration")
@@ -515,7 +282,7 @@ class Player:
         elif self.configuration["ks_HelpMenu"] == key:
             self._showHelpMenu()
 
-        # !!! Add resizability !!!
+        # Add resizability
         elif curses.KEY_RESIZE == key:
             for window in self.selectableWins:
                 del window
@@ -861,7 +628,7 @@ class Player:
             pass
 
         # Saves the latest settings
-        writeConfigFile(self.configFile,
+        Parser.writeConfigFile(self.configFile,
                         self.configuration)
         curses.nocbreak()
         self.stdscr.keypad(False)
@@ -1363,4 +1130,7 @@ def main(stdscr):
 
 
 if __name__ == '__main__':
-    curses.wrapper(main)  #TODO ctrl-c does not exit gracefully
+    try:
+        curses.wrapper(main)
+    except KeyboardInterrupt:
+        pass
