@@ -25,7 +25,6 @@ d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b
 
 
     To Add:
-        * Add Resizability                              Importance: MEDIUM
         * Faster refresh rate                           Importance: LOW
 
     Feature Ideas:
@@ -424,11 +423,9 @@ class Player:
         if self.stdscr.getmaxyx()[0] < 28 or self.stdscr.getmaxyx()[1] < 130:
             raise Exception("Not enough space, please maximize terminal. If that doesn't work, try and "
                             "lower the font size")
-        maxY, maxX = self.stdscr.getmaxyx()
-        self.selectedWin = self.listWin = curses.newwin(maxY - 2, maxX // 3, 1, 1)
-        self.barWin = curses.newwin(maxY // 5, maxX // 3 * 2 - 3, maxY - maxY // 5 - 1, maxX // 3 + 2)
-        self.metaWin = curses.newwin((maxY // 5) * 4 + 1, maxX // 3 * 2 - 3, 1, maxX // 3 + 2)
-        self.popupWin = None
+
+        self.listWin, self.barWin, self.metaWin = self._generateWindows()
+        self.selectedWin = self.listWin
 
         # Checks for missing songs inside playlists, as playlists can contain songs
         # from different folders, and trying to access a song that has been deleted
@@ -458,6 +455,29 @@ class Player:
         self._refreshWindow(self.metaWin)
         self.selectableWins = [self.listWin, self.metaWin, self.barWin]
         self._changeVolume(self.configuration["volume"])
+
+    def _generateWindows(self):
+        """
+        Summary:
+        -------
+        generates all the needed windows according to
+        the current terminal size.
+
+        Returns:
+        -------
+        List
+            The generated windows
+        """
+
+        maxY, maxX = self.stdscr.getmaxyx()
+
+        # Selected win
+        # Bar win
+        # Meta win
+        # Popup win
+        return [curses.newwin(maxY - 2, maxX // 3, 1, 1),
+                curses.newwin(maxY // 5, maxX // 3 * 2 - 3, maxY - maxY // 5 - 1, maxX // 3 + 2),
+                curses.newwin((maxY // 5) * 4 + 1, maxX // 3 * 2 - 3, 1, maxX // 3 + 2)]
 
     def _refreshWindow(self, win):
         """
@@ -497,6 +517,10 @@ class Player:
 
         # !!! Add resizability !!!
         elif curses.KEY_RESIZE == key:
+            for window in self.selectableWins:
+                del window
+
+            self.listWin, self.barWin, self.metaWin = self._generateWindows()
             self._refreshEverything()
 
         # Moves between windows
