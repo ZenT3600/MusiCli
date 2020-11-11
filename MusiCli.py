@@ -8,14 +8,12 @@ import time
 import random
 import kthread
 import string
-import traceback
 
 from pathlib import Path
 from tinytag import TinyTag
 from mutagen.mp3 import MP3
 from pygame import mixer
 from typing import Dict, List
-
 
 """
 d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b 
@@ -24,11 +22,7 @@ d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b
    88    88    88 88   88 88    88       88         88      `Y8b.    88    
    88    `8b  d8' 88  .8D `8b  d8'       88booo.   .88.   db   8D    88    
    YP     `Y88P'  Y8888D'  `Y88P'        Y88888P Y888888P `8888Y'    YP    
-    
-    Known Bugs:
-          If the user lands on a playlist by
-        * skipping through the songs, the program       Importance: HIGH
-          will crash
+
 
     To Add:
         * Add Resizability                              Importance: MEDIUM
@@ -43,6 +37,7 @@ d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b
 """
 
 pathsep = os.path.sep
+
 
 def syntaxIsValid(file: str) -> bool:
     """
@@ -545,8 +540,7 @@ class Player:
                 self.currentPlaylist = self.selectedSong[:-1] \
                     if f"playlist_{self.selectedSong[:-1]}" in self.configuration.keys() else None
                 self.queue = self._generateQueue(start=self.music.index(self.selectedSong))
-                self._playSong(song=self.queue[self.queueIndex],
-                               fullPath=f"playlist_{self.selectedSong[:-1]}" in self.configuration.keys())
+                self._playSong(song=self.queue[self.queueIndex])
 
             # Creates a playlist
             elif self.configuration["ks_NewPlaylist"] == key:
@@ -624,13 +618,10 @@ class Player:
                     self.queueThread.kill()
                 except Exception:
                     pass
-                self.queueIndex -= 1 if self.queueIndex > 0 else 0
-                try:
-                    self._playSong(song=self.queue[self.queueIndex])
-                except IndexError:
-                    self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 2,
-                                                  self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 4)
-                    self._makeInfoPopup(self.popupWin, "Queue", "Queue has been completed")
+                self.queueIndex = (self.queueIndex - 1) % len(self.queue)
+                while f"playlist_{self.queue[self.queueIndex][:-1]}" in self.configuration.keys():
+                    self.queueIndex = (self.queueIndex - 1) % len(self.queue)
+                self._playSong(song=self.queue[self.queueIndex])
 
             # Goes to the next song
             elif self.configuration["ks_SongNext"] == key:
@@ -638,13 +629,10 @@ class Player:
                     self.queueThread.kill()
                 except Exception:
                     pass
-                self.queueIndex += 1 if self.queueIndex < len(self.queue) - 1 else 0
-                try:
-                    self._playSong(song=self.queue[self.queueIndex])
-                except IndexError:
-                    self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 2,
-                                                  self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 4)
-                    self._makeInfoPopup(self.popupWin, "Queue", "Queue has been completed")
+                self.queueIndex = (self.queueIndex + 1) % len(self.queue)
+                while f"playlist_{self.queue[self.queueIndex][:-1]}" in self.configuration.keys():
+                    self.queueIndex = (self.queueIndex + 1) % len(self.queue)
+                self._playSong(song=self.queue[self.queueIndex])
 
             # Pauses / UnPauses the song
             elif self.configuration["ks_PlayPauseSong"] == key:
@@ -657,7 +645,7 @@ class Player:
                     self.paused = True
                     self._refreshWindow(self.barWin)
 
-    def _playSong(self, song=None, fullPath=False, noQueueThread=False):
+    def _playSong(self, song=None, noQueueThread=False):
         """
         Summary:
         -------
@@ -684,13 +672,10 @@ class Player:
         self._refreshEverything()
         mixer.music.stop()
 
-        if not fullPath:
+        try:
+            mixer.music.load(self.selectedSong)
+        except Exception:
             mixer.music.load(os.path.join(self.configuration["musicFolder"], self.selectedSong))
-        else:
-            try:
-                mixer.music.load(self.selectedSong)
-            except Exception:
-                mixer.music.load(os.path.join(self.configuration["musicFolder"], self.selectedSong))
 
         mixer.music.play()
         self.paused = False
@@ -718,23 +703,15 @@ class Player:
 
         # Generates a new queue
         self.queue = self._generateQueue(start=self.music.index(os.path.basename(self.selectedSong)))
-
-        # Skips first song, it's already playing
-        self.queueIndex = 1
+        self.queueIndex = 0
 
         while True:
             while mixer.music.get_busy():
                 continue
 
-            try:
-                self._playSong(song=self.queue[self.queueIndex],
-                               fullPath=f"playlist_{self.selectedSong[:-1]}" in self.configuration.keys(),
-                               noQueueThread=True)
-            except IndexError:
-                self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 2,
-                                              self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 4)
-                self._makeInfoPopup(self.popupWin, "Queue", "Queue has been completed")
-            self.queueIndex += 1
+            self.queueIndex = (self.queueIndex + 1) % len(self.queue)
+            self._playSong(song=self.queue[self.queueIndex],
+                           noQueueThread=True)
 
     def _generateQueue(self, start=0) -> List:
         """
@@ -818,7 +795,7 @@ class Player:
         """
 
         return [file.split(pathsep)[-1] for file in glob.glob(os.path.join(self.configuration['musicFolder']
-                                                                        if not folder else folder, "*.mp3"))]
+                                                                           if not folder else folder, "*.mp3"))]
 
     def start(self):
         """
@@ -865,7 +842,7 @@ class Player:
         curses.endwin()
         sys.exit(0)
 
-    def _populateSongs(self, win, songs, start=2) -> List:
+    def _populateSongs(self, win, songs, start=2):
         """
         Summary:
         -------
@@ -1352,7 +1329,11 @@ class Player:
 
 def main(stdscr):
     p = Player(stdscr)
-    p.start()
+    try:
+        p.start()
+    except KeyboardInterrupt:
+        p.stop()
+
 
 if __name__ == '__main__':
-    curses.wrapper(main) #TODO ctrl-c does not exit gracefully
+    curses.wrapper(main)  #TODO ctrl-c does not exit gracefully
