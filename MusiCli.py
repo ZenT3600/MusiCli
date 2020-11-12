@@ -35,7 +35,7 @@ d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b
 """
 
 pathsep = os.path.sep
-
+supportedExtensions = ["mp3",]
 
 class Player:
     """
@@ -461,10 +461,7 @@ class Player:
         self._refreshEverything()
         mixer.music.stop()
 
-        try:
-            mixer.music.load(self.selectedSong)
-        except Exception:
-            mixer.music.load(os.path.join(self.configuration["musicFolder"], self.selectedSong))
+        mixer.music.load(self.selectedSong)
 
         mixer.music.play()
         self.paused = False
@@ -585,9 +582,17 @@ class Player:
         List
             All the songs that were found
         """
-
-        return [file.split(pathsep)[-1] for file in glob.glob(os.path.join(self.configuration['musicFolder']
-                                                                           if not folder else folder, "*.mp3"))]
+        if not folder: folder = self.configuration["musicFolder"]
+        out = []
+        for f in os.listdir(folder):
+            if os.path.isdir(os.path.join(folder, f)):
+                out.extend(self._getMusic(folder=os.path.join(folder, f)))
+            elif f.split(".")[-1] in supportedExtensions:
+                out.append(os.path.join(folder, f))
+        return out
+                
+        #return [file.split(pathsep)[-1] for file in glob.glob(os.path.join(self.configuration['musicFolder']
+        #                                                                   if not folder else folder, "*.mp3"))]
 
     def start(self):
         """
@@ -664,9 +669,9 @@ class Player:
         try:
             for i, song in enumerate(songs[start:]):
                 try:
-                    songName = song[:-len(song.split(".")[-1]) - 1]
+                    songName = song.split(pathsep)[-1][:-len(song.split(".")[-1]) - 1]
                     if i == 0:
-                        songName = "]-> " + song[:-len(song.split(".")[-1]) - 1]
+                        songName = "]-> " + songName
                     win.addstr(y, x, songName[:(self.stdscr.getmaxyx()[1] // 3 - 1)])
                 except Exception:
                     continue
@@ -847,7 +852,7 @@ class Player:
 
         # The song is a single song
         if not self.currentPlaylist:
-            file = TinyTag.get(os.path.join(self.configuration["musicFolder"], os.path.basename(self.selectedSong)))
+            file = TinyTag.get(self.selectedSong)
 
             # All these try except are really ugly
             # I should find a better way, but this works
