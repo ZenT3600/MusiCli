@@ -472,6 +472,8 @@ class Player:
                 except Exception:
                     pass
                 self.queueIndex = (self.queueIndex - 1) % len(self.queue)
+                if self.queue[self.queueIndex] == "..":
+                    self.queueIndex = (self.queueIndex - 1) % len(self.queue)
                 while f"playlist_{self.queue[self.queueIndex][:-1]}" in self.configuration.keys():
                     self.queueIndex = (self.queueIndex - 1) % len(self.queue)
                 self._playSong(song=self.queue[self.queueIndex])
@@ -483,6 +485,8 @@ class Player:
                 except Exception:
                     pass
                 self.queueIndex = (self.queueIndex + 1) % len(self.queue)
+                if self.queue[self.queueIndex] == "..":
+                    self.queueIndex = (self.queueIndex + 1) % len(self.queue)
                 while f"playlist_{self.queue[self.queueIndex][:-1]}" in self.configuration.keys():
                     self.queueIndex = (self.queueIndex + 1) % len(self.queue)
                 self._playSong(song=self.queue[self.queueIndex])
@@ -569,6 +573,8 @@ class Player:
                 continue
 
             self.queueIndex = (self.queueIndex + 1) % len(self.queue)
+            if self.queue[self.queueIndex] == "..":
+                self.queueIndex = (self.queueIndex + 1) % len(self.queue)
             while f"playlist_{self.queue[self.queueIndex][:-1]}" in self.configuration.keys():
                 self.queueIndex = (self.queueIndex + 1) % len(self.queue)
 
