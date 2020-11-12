@@ -23,9 +23,6 @@ d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b
    88    `8b  d8' 88  .8D `8b  d8'       88booo.   .88.   db   8D    88    
    YP     `Y88P'  Y8888D'  `Y88P'        Y88888P Y888888P `8888Y'    YP    
 
-    Known Bugs:
-        * Resizing the window prevents tabbing          Importance: HIGH
-
     To Add:
         * Faster refresh rate                           Importance: LOW
 
@@ -148,28 +145,28 @@ class Player:
             # config file and shows a welcome message
 
             Parser.writeConfigFile(self.configFile,
-                            {
-                                "musicFolder": str(os.path.join(Path.home(), "Music")),
-                                "volume": 25,
-                                "random": False,
-                                "# Available Special Keys": "<UP> , <DOWN> , <LEFT> , <RIGHT> , "
-                                                            "<TAB> , <SPACE>",
-                                "ks_SongSelectionUp": "<UP>",
-                                "ks_VolumeUp": "<UP>",
-                                "ks_SongNext": "<RIGHT>",
-                                "ks_SongPrevious": "<LEFT>",
-                                "ks_SongSelectionDown": "<DOWN>",
-                                "ks_VolumeDown": "<DOWN>",
-                                "ks_MoveBetweenWins": "<TAB>",
-                                "ks_PlayPauseSong": "<SPACE>",
-                                "ks_Quit": "q",
-                                "ks_NewPlaylist": "n",
-                                "ks_AddToPlaylist": "+",
-                                "ks_RemoveFromPlaylist": "-",
-                                "ks_ChangeFolderSetting": "c",
-                                "ks_ChangeFlowSetting": "f",
-                                "ks_HelpMenu": "h",
-                            })
+                                   {
+                                       "musicFolder": str(os.path.join(Path.home(), "Music")),
+                                       "volume": 25,
+                                       "random": False,
+                                       "# Available Special Keys": "<UP> , <DOWN> , <LEFT> , <RIGHT> , "
+                                                                   "<TAB> , <SPACE>",
+                                       "ks_SongSelectionUp": "<UP>",
+                                       "ks_VolumeUp": "<UP>",
+                                       "ks_SongNext": "<RIGHT>",
+                                       "ks_SongPrevious": "<LEFT>",
+                                       "ks_SongSelectionDown": "<DOWN>",
+                                       "ks_VolumeDown": "<DOWN>",
+                                       "ks_MoveBetweenWins": "<TAB>",
+                                       "ks_PlayPauseSong": "<SPACE>",
+                                       "ks_Quit": "q",
+                                       "ks_NewPlaylist": "n",
+                                       "ks_AddToPlaylist": "+",
+                                       "ks_RemoveFromPlaylist": "-",
+                                       "ks_ChangeFolderSetting": "c",
+                                       "ks_ChangeFlowSetting": "f",
+                                       "ks_HelpMenu": "h",
+                                   })
             self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 2,
                                           self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 4)
             self.popupWin.border(']', '[', '=', '=', '+', '+', '+', '+')
@@ -198,7 +195,7 @@ class Player:
         # from different folders, and trying to access a song that has been deleted
         # would crash the program
         missing = Parser.getSongsMissingFromPlaylist({k: v for k, v in self.configuration.items()
-                                               if k.startswith("playlist_")})
+                                                      if k.startswith("playlist_")})
         if missing:
             for name, songs in missing.items():
                 for song in songs:
@@ -241,7 +238,6 @@ class Player:
         # Selected win
         # Bar win
         # Meta win
-        # Popup win
         return [curses.newwin(maxY - 2, maxX // 3, 1, 1),
                 curses.newwin(maxY // 5, maxX // 3 * 2 - 3, maxY - maxY // 5 - 1, maxX // 3 + 2),
                 curses.newwin((maxY // 5) * 4 + 1, maxX // 3 * 2 - 3, 1, maxX // 3 + 2)]
@@ -288,6 +284,8 @@ class Player:
                 del window
 
             self.listWin, self.barWin, self.metaWin = self._generateWindows()
+            self.selectableWins = [self.listWin, self.metaWin, self.barWin]
+            self.selectedWin = self.listWin
             self._refreshEverything()
 
         # Moves between windows
@@ -629,7 +627,7 @@ class Player:
 
         # Saves the latest settings
         Parser.writeConfigFile(self.configFile,
-                        self.configuration)
+                               self.configuration)
         curses.nocbreak()
         self.stdscr.keypad(False)
         curses.echo()
