@@ -671,7 +671,7 @@ class Player:
                 try:
                     songName = song.split(pathsep)[-1][:-len(song.split(".")[-1]) - 1]
                     if i == 0:
-                        songName = "]-> " + songname
+                        songName = "]-> " + songName
                     win.addstr(y, x, songName[:(self.stdscr.getmaxyx()[1] // 3 - 1)])
                 except Exception:
                     continue
