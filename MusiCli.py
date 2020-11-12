@@ -1,5 +1,4 @@
 import os
-import glob
 import curses
 import sys
 import time
@@ -30,12 +29,11 @@ d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b
         * Modify a song metadata
         * Move forward and backwards in a song
         * Add bookmarks on a song
-        * Albums support                                Working on it
-        * Look in subfolders of ~/Music
 """
 
 pathsep = os.path.sep
-supportedExtensions = ["mp3",]
+supportedExtensions = ["mp3", ]
+
 
 class Player:
     """
@@ -129,7 +127,6 @@ class Player:
         self.playingSong = None
         self.selectedSong = None
         self.selectedAlbum = None
-        self.currentPlaylist = None
         self.queue = list()
         self.queueIndex = 0
         self.paused = True
@@ -317,8 +314,6 @@ class Player:
                         self.selectedAlbum = list(self.albums.keys())[self.listWinStart]
                     except IndexError:
                         self.listWinStart -= 1
-                    self.currentPlaylist = self.selectedSong[:-1] \
-                        if f"playlist_{self.selectedSong[:-1]}" in self.configuration.keys() else None
                     self._populateSongs(self.listWin, self.albums, start=self.listWinStart)
 
                 self._populateMetadata(self.metaWin, insideAlbum=self.insideAlbum)
@@ -342,8 +337,6 @@ class Player:
                         self.selectedAlbum = list(self.albums.keys())[self.listWinStart]
                     except IndexError:
                         self.listWinStart += 1
-                    self.currentPlaylist = self.selectedSong[:-1] \
-                        if f"playlist_{self.selectedSong[:-1]}" in self.configuration.keys() else None
                     self._populateSongs(self.listWin, self.albums, start=self.listWinStart)
 
                 self._populateMetadata(self.metaWin, insideAlbum=self.insideAlbum)
@@ -373,7 +366,8 @@ class Player:
                         self.queueIndex = 0
                         self.currentPlaylist = self.selectedSong[:-1] \
                             if f"playlist_{self.selectedSong[:-1]}" in self.configuration.keys() else None
-                        self.queue = self._generateQueue(self.albums[self.selectedAlbum], start=self.albums[self.selectedAlbum].index(self.selectedSong))
+                        self.queue = self._generateQueue(self.albums[self.selectedAlbum],
+                                                         start=self.albums[self.selectedAlbum].index(self.selectedSong))
                         self._playSong(song=self.queue[self.queueIndex])
 
                 else:
@@ -671,7 +665,7 @@ class Player:
             elif f.split(".")[-1] in supportedExtensions:
                 out.append(os.path.join(folder, f))
         return out
-                
+
         #return [file.split(pathsep)[-1] for file in glob.glob(os.path.join(self.configuration['musicFolder']
         #                                                                   if not folder else folder, "*.mp3"))]
 
@@ -1122,6 +1116,11 @@ class Player:
             self._makeErrorPopup(self.popupWin, "Recursion error", "Add to Playlist")
             return
 
+        if isinstance(self.selectedSong, (list, tuple, slice)):
+            self._makeErrorPopup(self.popupWin, "Cannot add album to playlist", "Add to Playlist")
+            self._refreshEverything()
+            return
+
         if os.path.join(self.configuration["musicFolder"], self.selectedSong) \
                 in self.configuration[f"playlist_{playlist}"]:
             self._makeErrorPopup(self.popupWin, "Song already is in playlist", "Add to Playlist")
@@ -1142,28 +1141,37 @@ class Player:
         from a playlist
         """
 
-        if f"playlist_{self.selectedSong[:-1]}" in self.configuration.keys():
+        self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 2,
+                                      self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 4)
+
+        albumName = list(self.albums.keys())[self.listWinStart]
+        if f"playlist_{albumName}" in self.configuration.keys():
             self.popupWin.clear()
             self.popupWin.border(']', '[', '=', '=', '+', '+', '+', '+')
             self.popupWin.refresh()
             self.popupWin.addstr(2, 2, "Remove from Playlist",
                                  curses.color_pair(1))
             self.popupWin.addstr(5, 2, "Remove Playlist? <Y/N>", curses.color_pair(2))
+            curses.echo()
             if self.popupWin.getstr(6, 2, 1).decode().lower() == "y":
-                del self.configuration[f"playlist_{self.selectedSong[:-1]}"]
-                del self.albums[self.selectedSong]
+                del self.configuration[f"playlist_{albumName}"]
+                del self.albums[albumName]
                 self.listWinStart = 0
+            curses.noecho()
             self.popupWin.refresh()
             self.popupWin.clear()
             self._refreshEverything()
             return
 
-        self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 2,
-                                      self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 4)
         playlist = self._createPrompt(self.popupWin, "Remove from Playlist", "Playlist: ")
 
         if not playlist:
             self._makeErrorPopup(self.popupWin, "No name", "Remove from Playlist")
+            return
+
+        if isinstance(self.selectedSong, (list, tuple, slice)):
+            self._makeErrorPopup(self.popupWin, "Cannot remove album from playlist", "Remove from Playlist")
+            self._refreshEverything()
             return
 
         if f"playlist_{playlist}" not in self.configuration.keys():
