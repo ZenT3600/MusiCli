@@ -694,7 +694,7 @@ class Player:
 
         albums = {}
         for song in songs:
-            tags = TinyTag.get(os.path.join(self.configuration["musicFolder"], os.path.basename(song)))
+            tags = TinyTag.get(song)
             key = tags.album if tags.album else "[No Album]"
             try:
                 albums[key].append(song)
@@ -1020,8 +1020,7 @@ class Player:
             # The song is an album
             else:
                 albumName = list(self.albums.keys())[list(self.albums.keys()).index(self.selectedAlbum)]
-                firstSong = TinyTag.get(os.path.join(self.configuration["musicFolder"],
-                                                     os.path.basename(self.albums[albumName][0])))
+                firstSong = TinyTag.get(self.albums[albumName][0])
                 self._addMetadata(win, 1, 2, "Type:", "Album")
                 self._addMetadata(win, 4, 2, "Title:", albumName)
                 try:
