@@ -11,6 +11,7 @@ from tinytag import TinyTag
 from mutagen.mp3 import MP3
 from pygame import mixer
 from typing import List, Dict
+from pyfiglet import Figlet
 
 import Parser
 
@@ -119,8 +120,10 @@ class Player:
         curses.cbreak()
         curses.resize_term(*self.stdscr.getmaxyx())
         curses.start_color()
+        curses.init_color(11, 23, 204, 343)
         curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
         curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
+        curses.init_pair(3, 11, curses.COLOR_BLACK)
         self.stdscr.keypad(True)
         mixer.init()
 
@@ -348,6 +351,7 @@ class Player:
                     if self.selectedSong == "..":
                         self.insideAlbum = False
                         self.listWinStart = 0
+                        self.selectedAlbum = list(self.albums.keys())[self.listWinStart]
                         self._populateSongs(self.listWin,
                                             self.albums,
                                             start=0,
@@ -718,6 +722,7 @@ class Player:
         self._populateSongs(self.listWin, self.albums, self.listWinStart)
         self.selectedSong = self.albums[list(self.albums.keys())[self.listWinStart]]
         self._populateMetadata(self.metaWin, insideAlbum=self.insideAlbum)
+        self._setProgressBar(0)
         while True:
             self._checkForInput()
 
@@ -872,6 +877,7 @@ class Player:
 
         self.barWin.addstr(2, 1, f"Progress", curses.color_pair(1))
         self.barWin.addstr(3, 1, "=" * progress)
+        self._refreshWindow(self.barWin)
 
     def _addMetadata(self, win, y, x, tag, value):
         """
@@ -934,7 +940,7 @@ class Player:
         Summary:
         -------
         fills a window with the information on the currently selected song.
-
+0
         Parameters:
         -------
         win : curses.window
@@ -949,22 +955,50 @@ class Player:
         """
 
         win.clear()
-        logo = """
-             ; 
-             ;;
-             ;';.
-             ;  ;;
-   -++-      ;   ;;
-| MusiCli |  ;    ;;
-   -++-      ;   ;'
-             ;  ' 
-        ,;;;,; 
-        ;;;;;;
-        `;;;;'
-"""
-        for i, line in enumerate(logo.split("\n")):
-            win.addstr(6 + i, win.getmaxyx()[1] - 30, line, curses.color_pair(1))
 
+        # try:
+        albumName = list(self.albums.keys())[list(self.albums.keys()).index(self.selectedAlbum)]
+        first = Figlet(font="colossal").renderText(albumName[0].upper())
+        rest = Figlet(font="basic").renderText(albumName[1:])
+
+        difference = len(first.split("\n")) - len(rest.split("\n"))
+        logo = "\n".join(first.split("\n")[:difference]) + "\n"
+        for i, line in enumerate(rest.split("\n")):
+            logo += first.split("\n")[(difference + i - 1) % len(first.split("\n"))] + line + "\n"
+
+#         except Exception as e:
+#             logo = """
+#              ;
+#              ;;
+#              ;';.
+#              ;  ;;
+#    -++-      ;   ;;
+# | MusiCli |  ;    ;;
+#    -++-      ;   ;'
+#              ;  '
+#         ,;;;,;
+#         ;;;;;;
+#         `;;;;'
+# """
+        try:
+            for i, line in enumerate(logo.split("\n")):
+                win.addstr(10 + i,
+                           (win.getmaxyx()[1] - len(logo.split("\n")[len(logo.split("\n")) // 2])) // 2,
+                           line,
+                           curses.color_pair(3))
+        except:
+            win.clear()
+            rest = Figlet(font="basic").renderText(f"{albumName[1:3]} . . .")
+            difference = len(first.split("\n")) - len(rest.split("\n"))
+            logo = "\n".join(first.split("\n")[:difference]) + "\n"
+            for i, line in enumerate(rest.split("\n")):
+                logo += first.split("\n")[(difference + i - 1) % len(first.split("\n"))] + line + "\n"
+
+            for i, line in enumerate(logo.split("\n")):
+                win.addstr(10 + i,
+                           (win.getmaxyx()[1] - len(logo.split("\n")[len(logo.split("\n")) // 2])) // 2,
+                           line,
+                           curses.color_pair(3))
         # The song is a single song
         if insideAlbum:
             if self.selectedSong != "..":
@@ -974,9 +1008,9 @@ class Player:
                 # I should find a better way, but this works
                 # as a temporary solution
                 try:
-                    self._addMetadata(win, 1, 2, "Title:", file.title)
+                    self._addMetadata(win, 1, 2, "Title:", os.path.basename(file.title))
                 except Exception:
-                    self._addMetadata(win, 1, 2, "Title:", self.selectedSong[:-4])
+                    self._addMetadata(win, 1, 2, "Title:", os.path.basename(self.selectedSong[:-4]))
                 try:
                     self._addMetadata(win, 4, 2, "Artist:", file.artist)
                 except Exception:
