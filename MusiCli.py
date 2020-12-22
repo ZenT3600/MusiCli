@@ -16,12 +16,12 @@ from pyfiglet import Figlet
 import Parser
 
 """
-d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b 
-`~~88~~' .8P  Y8. 88  `8D .8P  Y8.       88        `88'   88'  YP `~~88~~' 
-   88    88    88 88   88 88    88       88         88    `8bo.      88    
-   88    88    88 88   88 88    88       88         88      `Y8b.    88    
-   88    `8b  d8' 88  .8D `8b  d8'       88booo.   .88.   db   8D    88    
-   YP     `Y88P'  Y8888D'  `Y88P'        Y88888P Y888888P `8888Y'    YP    
+d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b
+`~~88~~' .8P  Y8. 88  `8D .8P  Y8.       88        `88'   88'  YP `~~88~~'
+   88    88    88 88   88 88    88       88         88    `8bo.      88
+   88    88    88 88   88 88    88       88         88      `Y8b.    88
+   88    `8b  d8' 88  .8D `8b  d8'       88booo.   .88.   db   8D    88
+   YP     `Y88P'  Y8888D'  `Y88P'        Y88888P Y888888P `8888Y'    YP
 
     To Add:
         * Faster refresh rate                           Importance: LOW
@@ -242,7 +242,7 @@ class Player:
         # Meta win
         return [curses.newwin(maxY - 2, maxX // 3, 1, 1),
                 curses.newwin(maxY // 5, maxX // 3 * 2 - 3, maxY - maxY // 5 - 1, maxX // 3 + 2),
-                curses.newwin((maxY // 5) * 4 + 1, maxX // 3 * 2 - 3, 1, maxX // 3 + 2)]
+                curses.newwin((maxY // 5) * 4 - 2, maxX // 3 * 2 - 3, 1, maxX // 3 + 2)]
 
     def _refreshWindow(self, win):
         """
@@ -274,7 +274,8 @@ class Player:
 
         # Quits the program
         if self.configuration["ks_Quit"] == key:
-            raise KeyboardInterrupt()
+            self.stop()
+            # raise KeyboardInterrupt()
 
         # Shows the help menu
         elif self.configuration["ks_HelpMenu"] == key:
@@ -529,7 +530,13 @@ class Player:
 
         mixer.music.load(self.selectedSong)
 
-        mixer.music.play()
+        # To avoid "pygame.error: Audio device hasn't been opened"
+        while True:
+            try:
+                mixer.music.play()
+                break
+            except:
+                continue
         self.paused = False
         mixer.music.set_volume(self.configuration["volume"] / 100)
         self._populateMetadata(self.metaWin, insideAlbum=self.insideAlbum)
@@ -539,15 +546,25 @@ class Player:
         else:
             self._populateSongs(self.listWin, self.albums, self.listWinStart,
                                 insideAlbum=False)
-        try:
-            self.progressBarThread.kill()
-        except Exception:
-            pass
-        self.progressBarThread = kthread.KThread(target=self._startProgressBar, kwargs={"song": song})
+
+        if self.progressBarThread is not None:
+            try:
+                self.progressBarThread.terminate()
+            except Exception as e:
+                print(e)
+                pass
+
+        if self.queueThread is not None:
+            try:
+                self.queueThread.terminate()
+            except:
+                pass
+
+        self.progressBarThread = kthread.KThread(target=self._startProgressBar, kwargs={"song": song}, daemon=True)
         self.progressBarThread.start()
 
-        if not self.queueThread and not noQueueThread:
-            self.queueThread = kthread.KThread(target=self._queueHelper)
+        if not self.queueThread:
+            self.queueThread = kthread.KThread(target=self._queueHelper, daemon=True)
             self.queueThread.start()
 
     def _queueHelper(self):
@@ -733,15 +750,6 @@ class Player:
         stops the program itself
         """
 
-        try:
-            self.progressBarThread.kill()
-        except Exception:
-            pass
-        try:
-            self.queueThread.kill()
-        except Exception:
-            pass
-
         # Saves the latest settings
         Parser.writeConfigFile(self.configFile,
                                self.configuration)
@@ -849,11 +857,11 @@ class Player:
                 continue
 
             self._setProgressBar(int(index))
-            self._refreshWindow(self.barWin)
             self.barWinProgress = index
             time.sleep(1)
             index += (self.barWin.getmaxyx()[1] - 5) / length
         self.paused = True
+        index = 0
 
     def _setProgressBar(self, progress):
         """
