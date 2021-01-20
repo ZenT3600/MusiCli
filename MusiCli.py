@@ -15,22 +15,6 @@ from pyfiglet import Figlet
 
 import Parser
 
-"""
-d888888b  .d88b.  d8888b.  .d88b.        db      d888888b .d8888. d888888b
-`~~88~~' .8P  Y8. 88  `8D .8P  Y8.       88        `88'   88'  YP `~~88~~'
-   88    88    88 88   88 88    88       88         88    `8bo.      88
-   88    88    88 88   88 88    88       88         88      `Y8b.    88
-   88    `8b  d8' 88  .8D `8b  d8'       88booo.   .88.   db   8D    88
-   YP     `Y88P'  Y8888D'  `Y88P'        Y88888P Y888888P `8888Y'    YP
-
-    To Add:
-        * Faster refresh rate                           Importance: LOW
-
-    Feature Ideas:
-        * Modify a song metadata
-        * Move forward and backwards in a song
-        * Add bookmarks on a song
-"""
 
 pathsep = os.path.sep
 supportedExtensions = ["mp3", ]
@@ -150,6 +134,8 @@ class Player:
                                    {
                                        "musicFolder": str(os.path.join(Path.home(), "Music")),
                                        "volume": 25,
+                                       "forwardSkip": 5,
+                                       "backwardsSkip": 5,
                                        "random": False,
                                        "# Available Special Keys": "<UP> , <DOWN> , <LEFT> , <RIGHT> , "
                                                                    "<TAB> , <SPACE>",
@@ -168,6 +154,8 @@ class Player:
                                        "ks_ChangeFolderSetting": "c",
                                        "ks_ChangeFlowSetting": "f",
                                        "ks_HelpMenu": "h",
+                                       "ks_ForwardInTime": "+",
+                                       "ks_BackwardsInTime": "-"
                                    })
             self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 2,
                                           self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 4)
@@ -240,9 +228,18 @@ class Player:
         # Selected win
         # Bar win
         # Meta win
-        return [curses.newwin(maxY - 2, maxX // 3, 1, 1),
-                curses.newwin(maxY // 5, maxX // 3 * 2 - 3, maxY - maxY // 5 - 1, maxX // 3 + 2),
-                curses.newwin((maxY // 5) * 4 - 2, maxX // 3 * 2 - 3, 1, maxX // 3 + 2)]
+        return [curses.newwin(maxY - 2,
+                              maxX // 3, 1, 1),
+
+                curses.newwin(maxY // 5,
+                              maxX // 3 * 2 - 3,
+                              maxY - maxY // 5 - 1,
+                              maxX // 3 + 2),
+
+                curses.newwin((maxY // 5) * 4 + 2,
+                              maxX // 3 * 2 - 3,
+                              1,
+                              maxX // 3 + 2)]
 
     def _refreshWindow(self, win):
         """
@@ -450,6 +447,16 @@ class Player:
         # Progress Bar Window specific hotkeys
         elif self.selectedWin == self.barWin:
 
+            # ! To Implement \/
+            # Moves forward in the song
+            if self.configuration["ks_ForwardInTime"] == key:
+                pass
+
+            # Moves backwards in the song
+            if self.configuration["ks_BackwardsInTime"] == key:
+                pass
+            # ! To Implement /\
+
             # Turns the volume down
             if self.configuration["ks_VolumeDown"] == key:
                 if self.configuration["volume"] > 0:
@@ -501,7 +508,7 @@ class Player:
                     self.paused = True
                     self._refreshWindow(self.barWin)
 
-    def _playSong(self, song=None, noQueueThread=False):
+    def _playSong(self, song=None, start=None):
         """
         Summary:
         -------
@@ -512,11 +519,8 @@ class Player:
         song : str
             The song to play. If None, the currently selected song plays
 
-        fullPath : bool
-            Wether the given song path is absolute or not
-
-        noQueueThread : bool
-            Wether or not to start a queueThread
+        start : float
+            The start time of the song. If None, begin at the start of the song
         """
 
         # Currently selected song or "song" parameter
@@ -533,9 +537,12 @@ class Player:
         # To avoid "pygame.error: Audio device hasn't been opened"
         while True:
             try:
-                mixer.music.play()
+                if not start:
+                    mixer.music.play()
+                else:
+                    mixer.music.play(start=start)
                 break
-            except:
+            except Exception:
                 continue
         self.paused = False
         mixer.music.set_volume(self.configuration["volume"] / 100)
@@ -557,7 +564,7 @@ class Player:
         if self.queueThread is not None:
             try:
                 self.queueThread.terminate()
-            except:
+            except Exception:
                 pass
 
         self.progressBarThread = kthread.KThread(target=self._startProgressBar, kwargs={"song": song}, daemon=True)
@@ -590,8 +597,7 @@ class Player:
             while f"playlist_{self.queue[self.queueIndex][:-1]}" in self.configuration.keys():
                 self.queueIndex = (self.queueIndex + 1) % len(self.queue)
 
-            self._playSong(song=self.queue[self.queueIndex],
-                           noQueueThread=True)
+            self._playSong(song=self.queue[self.queueIndex])
 
     def _generateQueue(self, songs, start=0) -> List:
         """
@@ -678,7 +684,8 @@ class Player:
         List
             All the songs that were found
         """
-        if not folder: folder = self.configuration["musicFolder"]
+        if not folder:
+            folder = self.configuration["musicFolder"]
         out = []
         for f in os.listdir(folder):
             if os.path.isdir(os.path.join(folder, f)):
@@ -690,7 +697,8 @@ class Player:
         #return [file.split(pathsep)[-1] for file in glob.glob(os.path.join(self.configuration['musicFolder']
         #                                                                   if not folder else folder, "*.mp3"))]
 
-    def _getAlbums(self, songs) -> Dict:
+    @staticmethod
+    def _getAlbums(songs) -> Dict:
         """
         Summary:
         -------
@@ -838,16 +846,7 @@ class Player:
         """
 
         index = 0
-        try:
-            # Uses already selected song
-            if not song:
-                length = MP3(os.path.join(self.configuration["musicFolder"], self.selectedSong)).info.length
-
-            # Uses given "song" parameter
-            else:
-                length = MP3(song).info.length
-        except Exception:
-            length = MP3(os.path.join(self.configuration["musicFolder"], self.selectedSong)).info.length
+        length = self._getSongLength(song=song)
 
         self.barWin.addstr(2, 1, f"Progress", curses.color_pair(1))
         self._refreshWindow(self.barWin)
@@ -861,7 +860,18 @@ class Player:
             time.sleep(1)
             index += (self.barWin.getmaxyx()[1] - 5) / length
         self.paused = True
-        index = 0
+
+    def _getSongLength(self, song=None):
+        try:
+            # Uses already selected song
+            if not song:
+                return MP3(os.path.join(self.configuration["musicFolder"], self.selectedSong)).info.length
+
+            # Uses given "song" parameter
+            else:
+                return MP3(song).info.length
+        except Exception:
+            return MP3(os.path.join(self.configuration["musicFolder"], self.selectedSong)).info.length
 
     def _setProgressBar(self, progress):
         """
@@ -990,11 +1000,11 @@ class Player:
 # """
         try:
             for i, line in enumerate(logo.split("\n")):
-                win.addstr(10 + i,
+                win.addstr(win.getmaxyx()[0] - len(logo.split("\n")) + i,
                            (win.getmaxyx()[1] - len(logo.split("\n")[len(logo.split("\n")) // 2])) // 2,
                            line,
                            curses.color_pair(3))
-        except:
+        except Exception:
             win.clear()
             rest = Figlet(font="basic").renderText(f"{albumName[1:3]} . . .")
             difference = len(first.split("\n")) - len(rest.split("\n"))
@@ -1061,7 +1071,7 @@ class Player:
                 self._addMetadata(win, 4, 2, "Title:", albumName)
                 try:
                     self._addMetadata(win, 7, 2, "Artist:", firstSong.artist)
-                except:
+                except Exception:
                     self._addMetadata(win, 7, 2, "Artist:", "<Unknown>")
                 self._addMetadata(win, 10, 2, "Tracks:", str(len(self.selectedSong)))
 
