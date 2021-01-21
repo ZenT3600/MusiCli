@@ -21,82 +21,6 @@ supportedExtensions = ["mp3", ]
 
 
 class Player:
-    """
-    A class used to represent the music player
-
-    Attributes:
-    -------
-    stdscr : curses.window
-        The main window object.
-
-    listWin : curses.window
-        The window object representing the song list window.
-
-    metaWin : curses.window
-        Thw window object representing the metadata window.
-
-    barWin : curses.window
-        The window object representing the progress bar window.
-
-    popupWin : curses.window
-        The window object representing all popup windows.
-
-    playingSong : str
-        The path to the song that's currently playing.
-
-    selectedSong : str
-        The path to the song that's currently selected, but
-        not necessarily playing.
-
-    currentPlaylist : str
-        If the song playing is not part of a playlist the value is None.
-        If the song playing is part of a playlist the value is the song itself.
-
-    queue : List
-        The current playing queue
-
-    queueIndex : int
-        The current position in the queue
-
-    paused : bool
-        Is the current playing song paused?
-
-    queueThread : kthread.KThread
-        The killable thread object that handles the queue
-
-    progressBarThread : kthread.KThread
-        The killable thread object that handles the progress bar movement
-
-    listWinStart : int
-        The index to start displaying songs in the songs list from
-
-    barWinProgress : int
-        The progress of the progress bar, measured in number of characters
-
-    music : List
-        All the available songs and playlists
-
-    configFile : str
-        The config file path
-
-    invalidSyntax : bool
-        Is the current config file syntactically correct?
-
-    configuration : Dict
-        The parsed configuration file.
-        Gets parsed a second time to be readable by the code
-
-    notParsedConfiguration : Dict
-        The parsed configuration file.
-        Stays intact
-
-    selectedWin : curses.window
-        The currently selected window
-
-    selectableWins : List
-        All the windows that can be selected
-    """
-
     def __init__(self, stdscr):
         self.stdscr = stdscr
         #self.stdscr = curses.initscr()
@@ -684,6 +608,7 @@ class Player:
         List
             All the songs that were found
         """
+
         if not folder:
             folder = self.configuration["musicFolder"]
         out = []
@@ -693,9 +618,6 @@ class Player:
             elif f.split(".")[-1] in supportedExtensions:
                 out.append(os.path.join(folder, f))
         return out
-
-        #return [file.split(pathsep)[-1] for file in glob.glob(os.path.join(self.configuration['musicFolder']
-        #                                                                   if not folder else folder, "*.mp3"))]
 
     @staticmethod
     def _getAlbums(songs) -> Dict:
@@ -984,20 +906,6 @@ class Player:
         for i, line in enumerate(rest.split("\n")):
             logo += first.split("\n")[(difference + i - 1) % len(first.split("\n"))] + line + "\n"
 
-#         except Exception as e:
-#             logo = """
-#              ;
-#              ;;
-#              ;';.
-#              ;  ;;
-#    -++-      ;   ;;
-# | MusiCli |  ;    ;;
-#    -++-      ;   ;'
-#              ;  '
-#         ,;;;,;
-#         ;;;;;;
-#         `;;;;'
-# """
         try:
             for i, line in enumerate(logo.split("\n")):
                 win.addstr(win.getmaxyx()[0] - len(logo.split("\n")) + i,
