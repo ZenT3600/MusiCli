@@ -43,6 +43,7 @@ class Player:
         self.paused = True
         self.queueThread = None
         self.progressBarThread = None
+        self.currentPlaylist = None
         self.listWinStart = 0
         self.barWinProgress = 0
         self.albums = dict()
@@ -79,7 +80,8 @@ class Player:
                                        "ks_ChangeFlowSetting": "f",
                                        "ks_HelpMenu": "h",
                                        "ks_ForwardInTime": "+",
-                                       "ks_BackwardsInTime": "-"
+                                       "ks_BackwardsInTime": "-",
+                                       "Ks_Queue": "p"
                                    })
             self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 2,
                                           self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 4)
@@ -201,6 +203,10 @@ class Player:
         # Shows the help menu
         elif self.configuration["ks_HelpMenu"] == key:
             self._showHelpMenu()
+
+        # Shows the queue
+        elif self.configuration["ks_Queue"] == key:
+            self._showQueue()
 
         # Add resizability
         elif curses.KEY_RESIZE == key:
@@ -640,7 +646,7 @@ class Player:
         albums = {}
         for song in songs:
             tags = TinyTag.get(song)
-            key = tags.album if tags.album else "[No Album]"
+            key = tags.album if tags.album else " [ No Album ]"
             try:
                 albums[key].append(song)
             except (AttributeError, KeyError):
@@ -816,7 +822,7 @@ class Player:
             self.barWin.addstr(2, self.barWin.getmaxyx()[1] // 2 - len(f"Paused") // 2, f"Paused", curses.color_pair(1))
 
         self.barWin.addstr(2, 1, f"Progress", curses.color_pair(1))
-        self.barWin.addstr(3, 1, "=" * progress)
+        self.barWin.addstr(3, 1, "#" * progress)
         self._refreshWindow(self.barWin)
 
     def _addMetadata(self, win, y, x, tag, value):
@@ -1201,6 +1207,33 @@ class Player:
         win.refresh()
         win.getstr(0, 0, 0)
         win.clear()
+        self._refreshEverything()
+
+    def _showQueue(self):
+        """
+        Summary:
+        shows a window with the current queue
+        """
+
+        self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 2, self.stdscr.getmaxyx()[1] // 2,
+                                      self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 4)
+        self.popupWin.border(']', '[', '=', '=', '+', '+', '+', '+')
+        self.popupWin.addstr(2, 2, "Song queue: <Enter>",
+                             curses.color_pair(1))
+
+        y = 0
+        x = 2
+        for queue in self.queue:
+            if not queue == "..":
+                self.popupWin.addstr(y + 4, x, f"{os.path.basename(queue)}")
+                y += 1
+                if y >= 10:
+                    y = 0
+                    x += 35
+
+        self.popupWin.refresh()
+        self.popupWin.getstr(0, 0, 0)
+        self.popupWin.clear()
         self._refreshEverything()
 
     def _showHelpMenu(self):
