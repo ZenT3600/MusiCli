@@ -61,6 +61,8 @@ class Player:
                                    {
                                        "musicFolder": str(os.path.join(Path.home(), "Music")),
                                        "volume": 25,
+                                       "forwardSkip": 5,
+                                       "backwardsSkip": 5,
                                        "random": False,
                                        "# Available Special Keys": "<UP> , <DOWN> , <LEFT> , <RIGHT> , "
                                                                    "<TAB> , <SPACE>",
@@ -375,6 +377,16 @@ class Player:
 
         # Progress Bar Window specific hotkeys
         elif self.selectedWin == self.barWin:
+
+            # ! To Implement \/
+            # Moves forward in the song
+            if self.configuration["ks_ForwardInTime"] == key:
+                pass
+
+            # Moves backwards in the song
+            if self.configuration["ks_BackwardsInTime"] == key:
+                pass
+            # ! To Implement /\
 
             # Turns the volume down
             if self.configuration["ks_VolumeDown"] == key:
@@ -777,6 +789,18 @@ class Player:
             self.barWinProgress = index
             time.sleep(1)
             index += (self.barWin.getmaxyx()[1] - 5) / length
+
+    def _getSongLength(self, song=None):
+        try:
+            # Uses already selected song
+            if not song:
+                return MP3(os.path.join(self.configuration["musicFolder"], self.selectedSong)).info.length
+
+            # Uses given "song" parameter
+            else:
+                return MP3(song).info.length
+        except Exception:
+            return MP3(os.path.join(self.configuration["musicFolder"], self.selectedSong)).info.length
 
     def _getSongLength(self, song=None):
         try:
