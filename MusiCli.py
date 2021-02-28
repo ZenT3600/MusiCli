@@ -82,7 +82,7 @@ class Player:
                                        "ks_ChangeFolderSetting": "c",
                                        "ks_ChangeFlowSetting": "f",
                                        "ks_HelpMenu": "h",
-                                       "Ks_Queue": "p"
+                                       "ks_Queue": "p",
                                        "ks_ChangeMetadata": "m"
                                    })
             self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 2,
@@ -383,16 +383,6 @@ class Player:
 
         # Progress Bar Window specific hotkeys
         elif self.selectedWin == self.barWin:
-
-            # ! To Implement \/
-            # Moves forward in the song
-            if self.configuration["ks_ForwardInTime"] == key:
-                pass
-
-            # Moves backwards in the song
-            if self.configuration["ks_BackwardsInTime"] == key:
-                pass
-            # ! To Implement /\
 
             # Turns the volume down
             if self.configuration["ks_VolumeDown"] == key:
