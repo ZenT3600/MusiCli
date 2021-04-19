@@ -5,7 +5,6 @@ import time
 import random
 import kthread
 import string
-import traceback
 
 from pathlib import Path
 
@@ -21,6 +20,139 @@ import Parser
 
 pathsep = os.path.sep
 supportedExtensions = ["mp3", ]
+
+
+class Song:
+    def __init__(self, path):
+        self.path = path
+        self.__loadMetadata()
+
+    def __str__(self):
+        return str(self.title)
+
+    def __loadMetadata(self):
+        try:
+            self.__length = MP3(self.path).info.length
+            self.__id3 = ID3(self.path)
+            self.__title = str(self.__id3["TIT2"])
+            self.__artist = str(self.__id3["TPE1"])
+            self.__album = str(self.__id3["TALB"])
+        except:
+            self.__length = self.__title = self.__artist = self.__album = "[ Unknown ]"
+
+        self.__tinytag = TinyTag.get(self.path)
+        self.__track = self.__tinytag.track
+        self.__track_total = self.__tinytag.track_total
+
+    @property
+    def length(self):
+        return self.__length
+
+    @property
+    def track(self):
+        return self.__track
+
+    @property
+    def track_total(self):
+        return self.__track_total
+
+    @property
+    def title(self):
+        return self.__title
+
+    @title.setter
+    def title(self, value):
+        self.__id3["TIT2"] = TIT2(encoding=3, text=value)
+        self.__id3.save(self.path)
+        self.__loadMetadata()
+
+    @property
+    def artist(self):
+        return self.__artist
+
+    @artist.setter
+    def artist(self, value):
+        self.__id3["TPE1"] = TPE1(encoding=3, text=value)
+        self.__id3.save(self.path)
+        self.__loadMetadata()
+
+    @property
+    def album(self):
+        return self.__album
+
+    @album.setter
+    def album(self, value):
+        self.__id3["TALB"] = TALB(encoding=3, text=value)
+        self.__id3.save(self.path)
+        self.__loadMetadata()
+
+
+class Album:
+    def __init__(self, name, *args):
+        self.__name = name
+        self.__songs = []
+        for song in args:
+            self.__songs.append(song)
+
+    def __len__(self):
+        return len(self.allSongs)
+
+    def __getitem__(self, index):
+        return self.allSongs[index]
+
+    def index(self, value):
+        return self.allSongs.index(value)
+
+    @property
+    def allSongs(self):
+        return self.__songs
+
+    @property
+    def name(self):
+        return self.__name
+
+    def append(self, song):
+        self.__songs.append(song)
+
+    def pop(self, index):
+        self.__songs.pop(index)
+
+
+class Queue:
+    def __init__(self, *args):
+        self.__index = 0
+        self.__songs = []
+        for song in args:
+            if song != "..":
+                self.__songs.append(Song(song) if isinstance(song, str) else song)
+
+    def __len__(self):
+        return len(self.allSongs)
+
+    def __getitem__(self, index):
+        return self.allSongs[index]
+
+    @property
+    def allSongs(self):
+        return self.__songs
+
+    @property
+    def index(self):
+        return self.__index
+
+    @index.setter
+    def index(self, i):
+        self.__index = i
+
+    @property
+    def next(self):
+        return self.__songs[self.index + 1]
+
+    def append(self, song):
+        self.__songs.append(song)
+
+    def pop(self, index):
+        self.__songs.pop(index)
 
 
 class Player:
@@ -39,17 +171,16 @@ class Player:
         mixer.init()
 
         self.playingSong = None
-        self.selectedSong = None
-        self.selectedAlbum = None
-        self.queue = list()
-        self.queueIndex = 0
+        self.selectedEntry = None
+        self.selectedAlbumName = None
+        self.queue = Queue()
         self.paused = True
         self.queueThread = None
         self.progressBarThread = None
         self.currentPlaylist = None
         self.listWinStart = 0
         self.barWinProgress = 0
-        self.albums = dict()
+        self.albums: Dict[str, Album] = dict()
         self.insideAlbum = False
         self.configFile = os.path.join(pathsep.join(os.path.abspath(__file__).split(pathsep)[:-1]), "settings.config")
 
@@ -232,19 +363,19 @@ class Player:
             # Scrolls songs down
             if self.configuration["ks_SongSelectionDown"] == key:
                 if self.insideAlbum:
-                    self.listWinStart += 1 if self.listWinStart < len(self.albums[self.selectedAlbum]) else 0
+                    self.listWinStart += 1 if self.listWinStart < len(self.albums.get(self.selectedAlbumName)) else 0
                     try:
-                        self.selectedSong = self.albums[self.selectedAlbum][self.listWinStart]
+                        self.selectedEntry = self.albums.get(self.selectedAlbumName)[self.listWinStart]
                     except IndexError:
                         self.listWinStart -= 1
                     self.listWin.clear()
-                    self._populateSongs(self.listWin, self.albums[self.selectedAlbum],
+                    self._populateSongs(self.listWin, self.albums.get(self.selectedAlbumName),
                                         start=self.listWinStart, insideAlbum=True)
 
                 else:
                     self.listWinStart += 1 if self.listWinStart < len(list(self.albums.keys())) else 0
                     try:
-                        self.selectedAlbum = list(self.albums.keys())[self.listWinStart]
+                        self.selectedAlbumName = list(self.albums.keys())[self.listWinStart]
                     except IndexError:
                         self.listWinStart -= 1
                     self._populateSongs(self.listWin, self.albums, start=self.listWinStart)
@@ -257,17 +388,17 @@ class Player:
                 if self.insideAlbum:
                     self.listWinStart -= 1 if self.listWinStart > 0 else 0
                     try:
-                        self.selectedSong = self.albums[self.selectedAlbum][self.listWinStart]
+                        self.selectedEntry = self.albums.get(self.selectedAlbumName)[self.listWinStart]
                     except IndexError:
                         self.listWinStart += 1
                     self.listWin.clear()
-                    self._populateSongs(self.listWin, self.albums[self.selectedAlbum],
+                    self._populateSongs(self.listWin, self.albums.get(self.selectedAlbumName),
                                         start=self.listWinStart, insideAlbum=True)
 
                 else:
                     self.listWinStart -= 1 if self.listWinStart > 0 else 0
                     try:
-                        self.selectedAlbum = list(self.albums.keys())[self.listWinStart]
+                        self.selectedAlbumName = list(self.albums.keys())[self.listWinStart]
                     except IndexError:
                         self.listWinStart += 1
                     self._populateSongs(self.listWin, self.albums, start=self.listWinStart)
@@ -278,10 +409,10 @@ class Player:
             # Plays the selected song
             elif self.configuration["ks_PlayPauseSong"] == key:
                 if self.insideAlbum:
-                    if self.selectedSong == "..":
+                    if self.selectedEntry == "..":
                         self.insideAlbum = False
                         self.listWinStart = 0
-                        self.selectedAlbum = list(self.albums.keys())[self.listWinStart]
+                        self.selectedAlbumName = list(self.albums.keys())[self.listWinStart]
                         self._populateSongs(self.listWin,
                                             self.albums,
                                             start=0,
@@ -297,21 +428,21 @@ class Player:
                         except Exception:
                             pass
 
-                        self.queueIndex = 0
-                        self.currentPlaylist = self.selectedSong[:-1] \
-                            if f"playlist_{self.selectedSong[:-1]}" in self.configuration.keys() else None
-                        self.queue = self._generateQueue(self.albums[self.selectedAlbum],
-                                                         start=self.albums[self.selectedAlbum].index(self.selectedSong))
-                        self._playSong(song=self.queue[self.queueIndex])
+                        self.queue.index = 0
+                        self.currentPlaylist = str(self.selectedEntry)[:-1] \
+                            if f"playlist_{str(self.selectedEntry)[:-1]}" in self.configuration.keys() else None
+                        self.queue = self._generateQueue(self.albums.get(self.selectedAlbumName),
+                                                         start=self.albums.get(self.selectedAlbumName).index(self.selectedEntry))
+                        self._playSong(song=self.queue[self.queue.index])
 
                 else:
                     self.insideAlbum = True
                     self.listWinStart = 0
                     self.listWin.clear()
-                    self.selectedSong = self.albums[self.selectedAlbum][0]
+                    self.selectedEntry = self.albums.get(self.selectedAlbumName)[0]
                     self._populateSongs(self.listWin,
-                                        self.albums[self.selectedAlbum],
-                                        start=self.albums[self.selectedAlbum].index(self.selectedSong),
+                                        self.albums.get(self.selectedAlbumName),
+                                        start=self.albums.get(self.selectedAlbumName).index(self.selectedEntry),
                                         insideAlbum=True)
                     self._refreshEverything()
 
@@ -337,7 +468,7 @@ class Player:
         elif self.selectedWin == self.metaWin:
             # Changes the song's Metadata:
             if self.configuration["ks_ChangeMetadata"] == key:
-                self._changeMetadataFor(self.selectedSong)
+                self._changeMetadataFor(self.selectedEntry)
                 self._refreshEverything()
 
             # Changes the music folder
@@ -366,7 +497,7 @@ class Player:
                 self.listWinStart = 0
                 # self.music = self._getMusic(folder=newFolder.decode())
                 self._populateSongs(self.listWin,
-                                    self.albums if not self.insideAlbum else self.albums[self.selectedAlbum],
+                                    self.albums if not self.insideAlbum else self.albums.get(self.selectedAlbumName),
                                     self.listWinStart)
                 self._populateMetadata(self.metaWin, insideAlbum=self.insideAlbum)
 
@@ -374,11 +505,11 @@ class Player:
             if self.configuration["ks_ChangeFlowSetting"] == key:
                 if self.insideAlbum:
                     self.configuration["random"] = not self.configuration["random"]
-                    self.queue = self._generateQueue(self.albums[self.selectedAlbum],
-                                                     start=self.albums[self.selectedAlbum].index(self.selectedSong))
-                    self.queueIndex = 1  # Skip first song, it's already playing
+                    self.queue = self._generateQueue(self.albums.get(self.selectedAlbumName),
+                                                     start=self.albums.get(self.selectedAlbumName)[self.selectedEntry])
+                    self.queue.index = 1  # Skip first song, it's already playing
                     if not self.configuration["random"]:
-                        self.queueIndex = self.albums[self.selectedAlbum].index(self.selectedSong) + 1
+                        self.queue.index = self.albums.get(self.selectedAlbumName)[self.selectedEntry] + 1
                     self._populateMetadata(self.metaWin, insideAlbum=self.insideAlbum)
 
         # Progress Bar Window specific hotkeys
@@ -404,12 +535,12 @@ class Player:
                     self.queueThread.kill()
                 except Exception:
                     pass
-                self.queueIndex = (self.queueIndex - 1) % len(self.queue)
-                if self.queue[self.queueIndex] == "..":
-                    self.queueIndex = (self.queueIndex - 1) % len(self.queue)
-                while f"playlist_{self.queue[self.queueIndex][:-1]}" in self.configuration.keys():
-                    self.queueIndex = (self.queueIndex - 1) % len(self.queue)
-                self._playSong(song=self.queue[self.queueIndex])
+                self.queue.index = (self.queue.index - 1) % len(self.queue)
+                if self.queue[self.queue.index] == "..":
+                    self.queue.index = (self.queue.index - 1) % len(self.queue)
+                while f"playlist_{str(self.queue[self.queue.index])[:-1]}" in self.configuration.keys():
+                    self.queue.index = (self.queue.index - 1) % len(self.queue)
+                self._playSong(song=self.queue[self.queue.index])
 
             # Goes to the next song
             elif self.configuration["ks_SongNext"] == key:
@@ -417,12 +548,12 @@ class Player:
                     self.queueThread.kill()
                 except Exception:
                     pass
-                self.queueIndex = (self.queueIndex + 1) % len(self.queue)
-                if self.queue[self.queueIndex] == "..":
-                    self.queueIndex = (self.queueIndex + 1) % len(self.queue)
-                while f"playlist_{self.queue[self.queueIndex][:-1]}" in self.configuration.keys():
-                    self.queueIndex = (self.queueIndex + 1) % len(self.queue)
-                self._playSong(song=self.queue[self.queueIndex])
+                self.queue.index = (self.queue.index + 1) % len(self.queue)
+                if self.queue[self.queue.index] == "..":
+                    self.queue.index = (self.queue.index + 1) % len(self.queue)
+                while f"playlist_{str(self.queue[self.queue.index])[:-1]}" in self.configuration.keys():
+                    self.queue.index = (self.queue.index + 1) % len(self.queue)
+                self._playSong(song=self.queue[self.queue.index])
 
             # Pauses / UnPauses the song
             elif self.configuration["ks_PlayPauseSong"] == key:
@@ -451,15 +582,15 @@ class Player:
         """
 
         # Currently selected song or "song" parameter
-        self.selectedSong = self.albums[self.selectedAlbum][self.listWinStart] if not song else song
-        self.playingSong = self.selectedSong
+        self.selectedEntry = self.albums.get(self.selectedAlbumName)[self.listWinStart] if not song else song
+        self.playingSong = self.selectedEntry
 
         # Automatically moves to the progress bar window
         self.selectedWin = self.barWin
         self._refreshEverything()
         mixer.music.stop()
 
-        mixer.music.load(self.selectedSong)
+        mixer.music.load(self.selectedEntry.path)
 
         # To avoid "pygame.error: Audio device hasn't been opened"
         while True:
@@ -472,7 +603,7 @@ class Player:
         mixer.music.set_volume(self.configuration["volume"] / 100)
         self._populateMetadata(self.metaWin, insideAlbum=self.insideAlbum)
         if self.insideAlbum:
-            self._populateSongs(self.listWin, self.albums[self.selectedAlbum], self.listWinStart,
+            self._populateSongs(self.listWin, self.albums.get(self.selectedAlbumName), self.listWinStart,
                                 insideAlbum=True)
         else:
             self._populateSongs(self.listWin, self.albums, self.listWinStart,
@@ -506,25 +637,25 @@ class Player:
         """
 
         # Generates a new queue
-        self.queue = self._generateQueue(self.albums[self.selectedAlbum],
-                                         start=self.albums[self.selectedAlbum].index(self.selectedSong))
-        self.queueIndex = 0
+        self.queue = self._generateQueue(self.albums.get(self.selectedAlbumName),
+                                         start=self.albums.get(self.selectedAlbumName).index(self.selectedEntry))
+        self.queue.index = 0
 
         while True:
             while mixer.music.get_busy():
                 continue
 
-            self.queueIndex = (self.queueIndex + 1) % len(self.queue)
-            if self.queue[self.queueIndex] == "..":
-                self.queueIndex = (self.queueIndex + 1) % len(self.queue)
-            while f"playlist_{self.queue[self.queueIndex][:-1]}" in self.configuration.keys():
-                self.queueIndex = (self.queueIndex + 1) % len(self.queue)
+            self.queue.index = (self.queue.index + 1) % len(self.queue)
+            if self.queue[self.queue.index] == "..":
+                self.queue.index = (self.queue.index + 1) % len(self.queue)
+            while f"playlist_{str(self.queue[self.queue.index])[:-1]}" in self.configuration.keys():
+                self.queue.index = (self.queue.index + 1) % len(self.queue)
 
             self.barWinProgress = 0
             self.progressBarThread.terminate()
-            self._playSong(song=self.queue[self.queueIndex], start=0.0)
+            self._playSong(song=self.queue[self.queue.index], start=0.0)
 
-    def _generateQueue(self, songs, start=0) -> List:
+    def _generateQueue(self, songs, start=0) -> Queue:
         """
         Summary:
         -------
@@ -552,14 +683,14 @@ class Player:
             queue = [songs[i] for i in order if i < len(songs)]
             if self.configuration["random"]:
                 random.shuffle(queue)
-                queue[0] = self.selectedSong
-            return queue
+                queue[0] = self.selectedEntry
+            return Queue(*queue)
         else:
             # The queue is the playlist itself
             music = self.configuration[f"playlist_{self.currentPlaylist}"]
             if self.configuration["random"]:
                 random.shuffle(music)
-            return music
+            return Queue(*music)
 
     def _refreshEverything(self):
         """
@@ -580,7 +711,7 @@ class Player:
                 # No song is playing, progress bar can be reset
                 self._setProgressBar(0)
             if self.insideAlbum:
-                self._populateSongs(self.listWin, self.albums[self.selectedAlbum], self.listWinStart, insideAlbum=True)
+                self._populateSongs(self.listWin, self.albums.get(self.selectedAlbumName), self.listWinStart, insideAlbum=True)
             else:
                 self._populateSongs(self.listWin, self.albums, self.listWinStart, insideAlbum=False)
             self._refreshWindow(self.listWin)
@@ -591,7 +722,7 @@ class Player:
         except Exception:
             pass
 
-    def _getMusic(self, folder=None) -> List:
+    def _getMusic(self, folder=None) -> List[Song]:
         """
         Summary:
         -------
@@ -617,7 +748,7 @@ class Player:
             if os.path.isdir(os.path.join(folder, f)):
                 out.extend(self._getMusic(folder=os.path.join(folder, f)))
             elif f.split(".")[-1] in supportedExtensions:
-                out.append(os.path.join(folder, f))
+                out.append(Song(os.path.join(folder, f)))
         return out
 
     @staticmethod
@@ -640,12 +771,11 @@ class Player:
 
         albums = {}
         for song in songs:
-            tags = TinyTag.get(song)
-            key = tags.album if tags.album else " [ No Album ]"
+            key = song.album
             try:
                 albums[key].append(song)
             except (AttributeError, KeyError):
-                albums[key] = [song]
+                albums[key] = Album([song])
 
         for k in albums.keys():
             albums[k].append("..")
@@ -665,12 +795,12 @@ class Player:
             self._makeErrorPopup(self.popupWin, "No songs in default music folder", "Music Folder")
             sys.exit(-1)
         self.albums = self._getAlbums(music)
-        self.selectedAlbum = list(self.albums.keys())[0]
+        self.selectedAlbumName = list(self.albums.keys())[0]
 
         self._populateSongs(self.listWin, self.albums, self.listWinStart)
-        self.selectedSong = self.albums[list(self.albums.keys())[self.listWinStart]]
-        self.currentPlaylist = self.selectedSong[:-1] \
-            if f"playlist_{self.selectedSong[:-1]}" in self.configuration.keys() else None
+        self.selectedEntry = self.albums[list(self.albums.keys())[self.listWinStart]]
+        self.currentPlaylist = str(self.selectedEntry)[:-1] \
+            if f"playlist_{str(self.selectedEntry)[:-1]}" in self.configuration.keys() else None
 
         self._populateMetadata(self.metaWin, insideAlbum=self.insideAlbum)
         self._setProgressBar(0)
@@ -724,7 +854,7 @@ class Player:
 
         if insideAlbum:
             for i, song in enumerate(list(elements)[start:]):
-                songName = song.split(pathsep)[-1][:-len(song.split(".")[-1]) - 1]
+                songName = song.title if isinstance(song, Song) else song
                 if i == 0:
                     songName = "]-> " + songName
                 win.addstr(y, x, songName[:(self.stdscr.getmaxyx()[1] // 3 - 1)])
@@ -772,7 +902,7 @@ class Player:
         """
 
         index = self.barWinProgress
-        length = self._getSongLength(song=song)
+        length = song.length
 
         self.barWin.addstr(2, 1, f"Progress", curses.color_pair(1))
         self._refreshWindow(self.barWin)
@@ -782,33 +912,9 @@ class Player:
                 continue
 
             self._setProgressBar(int(index))
-            self.barWinProgress = index
+            self.barWinProgress = self.queue.index
             time.sleep(1)
             index += (self.barWin.getmaxyx()[1] - 5) / length
-
-    def _getSongLength(self, song=None):
-        try:
-            # Uses already selected song
-            if not song:
-                return MP3(os.path.join(self.configuration["musicFolder"], self.selectedSong)).info.length
-
-            # Uses given "song" parameter
-            else:
-                return MP3(song).info.length
-        except Exception:
-            return MP3(os.path.join(self.configuration["musicFolder"], self.selectedSong)).info.length
-
-    def _getSongLength(self, song=None):
-        try:
-            # Uses already selected song
-            if not song:
-                return MP3(os.path.join(self.configuration["musicFolder"], self.selectedSong)).info.length
-
-            # Uses given "song" parameter
-            else:
-                return MP3(song).info.length
-        except Exception:
-            return MP3(os.path.join(self.configuration["musicFolder"], self.selectedSong)).info.length
 
     def _setProgressBar(self, progress):
         """
@@ -825,7 +931,7 @@ class Player:
         self.barWin.clear()
         self._changeVolume(self.configuration["volume"])
         self.barWin.addstr(1, 1, "Playing: ", curses.color_pair(1))
-        self.barWin.addstr(1, len("Playing: ") + 1, os.path.basename(self.playingSong)[:50] if self.playingSong else "")
+        self.barWin.addstr(1, len("Playing: ") + 1, os.path.basename(self.playingSong.title)[:50] if self.playingSong else "")
 
         if self.paused and mixer.music.get_busy():
             self.barWin.addstr(2, self.barWin.getmaxyx()[1] // 2 - len(f"Paused") // 2, f"Paused", curses.color_pair(1))
@@ -911,8 +1017,7 @@ class Player:
 
         win.clear()
 
-        # try:
-        albumName = list(self.albums.keys())[list(self.albums.keys()).index(self.selectedAlbum)]
+        albumName = self.selectedAlbumName
         first = Figlet(font="colossal").renderText(albumName[0].upper())
         rest = Figlet(font="basic").renderText(albumName[1:])
 
@@ -943,9 +1048,7 @@ class Player:
         # The song is a single song
         if insideAlbum:
             win.clear()
-            if self.selectedSong != "..":
-                file = TinyTag.get(self.selectedSong)
-
+            if self.selectedEntry != "..":
                 # All these try except are really ugly
                 # I should find a better way, but this works
                 # as a temporary solution
@@ -956,19 +1059,19 @@ class Player:
 
                 self._addMetadata(win, 1, 2, "Metadata:", f"(Change: {changeMetaKey})")
                 try:
-                    self._addMetadata(win, 4, 2, "Title:", os.path.basename(file.title))
+                    self._addMetadata(win, 4, 2, "Title:", os.path.basename(self.selectedEntry.title))
                 except Exception:
-                    self._addMetadata(win, 4, 2, "Title:", os.path.basename(self.selectedSong[:-4]))
+                    self._addMetadata(win, 4, 2, "Title:", os.path.basename(self.selectedEntry[:-4]))
                 try:
-                    self._addMetadata(win, 7, 2, "Artist:", file.artist)
+                    self._addMetadata(win, 7, 2, "Artist:", self.selectedEntry.artist)
                 except Exception:
                     self._addMetadata(win, 7, 2, "Artist:", "<Unknown>")
                 try:
-                    self._addMetadata(win, 10, 2, "Track #n:", file.track + " / " + file.track_total)
+                    self._addMetadata(win, 10, 2, "Track #n:", self.selectedEntry.track + " / " + self.selectedEntry.track_total)
                 except Exception:
                     self._addMetadata(win, 10, 2, "Track #n:", "1 / 1")
                 try:
-                    self._addMetadata(win, 13, 2, "Album:", file.album)
+                    self._addMetadata(win, 13, 2, "Album:", self.selectedEntry.album)
                 except Exception:
                     self._addMetadata(win, 13, 2, "Album:", "<Unknown>")
 
@@ -978,13 +1081,13 @@ class Player:
 
         else:
             # The song is a playlist
-            if f"playlist_{self.selectedAlbum}" in self.configuration.keys():
+            if f"playlist_{self.selectedAlbumName}" in self.configuration.keys():
                 self._addMetadata(win, 1, 2, "Type:", "Playlist")
-                self._addMetadata(win, 4, 2, "Title:", self.selectedAlbum)
+                self._addMetadata(win, 4, 2, "Title:", self.selectedAlbumName)
                 win.addstr(7, 2, "Songs:", curses.color_pair(1))
                 i = 8
                 try:
-                    for index, song in enumerate(self.configuration[f"playlist_{self.selectedAlbum}"]):
+                    for index, song in enumerate(self.configuration[f"playlist_{self.selectedAlbumName}"]):
                         if index == 7:
                             break
                         win.addstr(i, 2, song[:-4])
@@ -995,15 +1098,14 @@ class Player:
 
             # The song is an album
             else:
-                albumName = list(self.albums.keys())[list(self.albums.keys()).index(self.selectedAlbum)]
-                firstSong = TinyTag.get(self.albums[albumName][0])
+                albumName = self.selectedAlbumName
+                firstSong = self.albums[albumName][0]
                 self._addMetadata(win, 1, 2, "Type:", "Album")
                 self._addMetadata(win, 4, 2, "Title:", albumName)
                 try:
                     self._addMetadata(win, 7, 2, "Artist:", firstSong.artist)
                 except Exception:
                     self._addMetadata(win, 7, 2, "Artist:", "<Unknown>")
-                self._addMetadata(win, 10, 2, "Tracks:", str(len(self.selectedSong)))
 
         # Adds global settings (Flow, Folder)
         self._addMetadata(win, win.getmaxyx()[0] - 7, 2, "Song Flow:",
@@ -1094,16 +1196,16 @@ class Player:
             self._makeErrorPopup(self.popupWin, "Playlist doesn't exist", "Add to Playlist")
             return
 
-        if f"playlist_{self.selectedSong[:-1]}" in self.configuration.keys():
+        if f"playlist_{str(self.selectedEntry)[:-1]}" in self.configuration.keys():
             self._makeErrorPopup(self.popupWin, "Recursion error", "Add to Playlist")
             return
 
-        if isinstance(self.selectedSong, (list, tuple, slice)):
+        if isinstance(self.selectedEntry, (list, tuple, slice)):
             self._makeErrorPopup(self.popupWin, "Cannot add album to playlist", "Add to Playlist")
             self._refreshEverything()
             return
 
-        if os.path.join(self.configuration["musicFolder"], self.selectedSong) \
+        if os.path.join(self.configuration["musicFolder"], self.selectedEntry.path) \
                 in self.configuration[f"playlist_{playlist}"]:
             self._makeErrorPopup(self.popupWin, "Song already is in playlist", "Add to Playlist")
             self._refreshEverything()
@@ -1112,7 +1214,7 @@ class Player:
         self.popupWin.clear()
         self.popupWin.refresh()
         self.configuration[f"playlist_{playlist}"].append(
-            os.path.join(self.configuration["musicFolder"], self.selectedSong))
+            os.path.join(self.configuration["musicFolder"], self.selectedEntry.path))
         self._refreshEverything()
 
     def _removeFromPlaylist(self):
@@ -1151,7 +1253,7 @@ class Player:
             self._makeErrorPopup(self.popupWin, "No name", "Remove from Playlist")
             return
 
-        if isinstance(self.selectedSong, (list, tuple, slice)):
+        if isinstance(self.selectedEntry, (list, tuple, slice)):
             self._makeErrorPopup(self.popupWin, "Cannot remove album from playlist", "Remove from Playlist")
             self._refreshEverything()
             return
@@ -1160,7 +1262,7 @@ class Player:
             self._makeErrorPopup(self.popupWin, "Playlist doesn't exist", "Remove from Playlist")
             return
 
-        if os.path.join(self.configuration["musicFolder"], self.selectedSong) \
+        if os.path.join(self.configuration["musicFolder"], self.selectedEntry) \
                 not in self.configuration[f"playlist_{playlist}"]:
             self._makeErrorPopup(self.popupWin, "Song is not in playlist", "Remove from Playlist")
             return
@@ -1168,7 +1270,7 @@ class Player:
         self.popupWin.clear()
         self.popupWin.refresh()
         self.configuration[f"playlist_{playlist}"].remove(
-            os.path.join(self.configuration["musicFolder"], self.selectedSong))
+            os.path.join(self.configuration["musicFolder"], self.selectedEntry))
         self._refreshEverything()
 
     def _makeErrorPopup(self, win, message, title):
@@ -1239,9 +1341,9 @@ class Player:
 
         y = 0
         x = 2
-        for queue in self.queue:
-            if not queue == "..":
-                self.popupWin.addstr(y + 4, x, f"{os.path.basename(queue)}")
+        for element in self.queue.allSongs:
+            if not element == "..":
+                self.popupWin.addstr(y + 4, x, f"{os.path.basename(element)}")
                 y += 1
                 if y >= 10:
                     y = 0
@@ -1279,44 +1381,16 @@ class Player:
         self.popupWin.clear()
         self._refreshEverything()
 
-    def _changeTimeTo(self, time):
-        # !!! DOESN'T WORK !!!
-
-        try:
-            self.queueThread.terminate()
-        except Exception:
-            pass
-        self.barWinProgress = time / time * (self.barWin.getmaxyx()[1] - 5)
-
-        currentPos = mixer.music.get_pos() / 1000
-        if currentPos < time:
-            while currentPos < time:
-                mixer.music.set_pos(currentPos)
-                currentPos += 5
-        else:
-            while currentPos > time:
-                mixer.music.set_pos(currentPos)
-                currentPos -= 5
-
-        self._playSong(song=self.playingSong, start=time)
-        self.queueThread = kthread.KThread(target=self._queueHelper, daemon=True)
-        self.queueThread.start()
-        self.progressBarThread = kthread.KThread(target=self._startProgressBar, kwargs={"song": self.playingSong}, daemon=True)
-        self.progressBarThread.start()
-        self._refreshEverything()
-
     def _changeMetadataFor(self, song):
-        file = TinyTag.get(song)
         self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 2,
                                       self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 4)
-        newTitle = self._createPrompt(self.popupWin, "Change song Title", f"Default \"{file.title}\": ")
-        newArtist = self._createPrompt(self.popupWin, "Change song Artist", f"Default \"{file.artist}\": ")
-        newAlbum = self._createPrompt(self.popupWin, "Change song Album", f"Default \"{file.album}\": ")
+        newTitle = self._createPrompt(self.popupWin, "Change song Title", f"Default \"{song.title}\": ")
+        newArtist = self._createPrompt(self.popupWin, "Change song Artist", f"Default \"{song.artist}\": ")
+        newAlbum = self._createPrompt(self.popupWin, "Change song Album", f"Default \"{song.album}\": ")
 
-        id3 = ID3(song)
-        id3["TIT2"] = TIT2(encoding=3, text=newTitle if len(newTitle.strip()) else file.title)
-        id3["TPE1"] = TPE1(encoding=3, text=newArtist if len(newArtist.strip()) else file.artist)
-        id3["TALB"] = TALB(encoding=3, text=newAlbum if len(newAlbum.strip()) else file.album)
+        song.title = newTitle if len(newTitle.strip()) else song.title
+        song.artist = newArtist if len(newArtist.strip()) else song.artist
+        song.album = newAlbum if len(newAlbum.strip()) else song.album
 
         if self.progressBarThread is not None:
             try:
@@ -1332,9 +1406,7 @@ class Player:
         mixer.music.stop()
         mixer.music.unload()
 
-        id3.save(song)
-
-        if newAlbum != file.album and len(newAlbum.strip()):
+        if newAlbum != song.album and len(newAlbum.strip()):
             music = self._getMusic()
             if not music:
                 self.popupWin = curses.newwin(self.stdscr.getmaxyx()[0] // 4, self.stdscr.getmaxyx()[1] // 2,
@@ -1342,7 +1414,7 @@ class Player:
                 self._makeErrorPopup(self.popupWin, "No songs in default music folder", "Music Folder")
                 sys.exit(-1)
             self.albums = self._getAlbums(music)
-            self.selectedAlbum = list(self.albums.keys())[list(self.albums.keys()).index(newAlbum)]
+            self.selectedAlbumName = list(self.albums.keys())[list(self.albums.keys()).index(newAlbum)]
 
 
 def main(stdscr):
